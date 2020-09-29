@@ -9,8 +9,7 @@
 >> Fill in the names and email addresses of your group members.
 
 Yoonyoung Jung <myhjyy@unist.ac.kr>
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
+Gwanwoo Choi <cgw1999@unist.ac.kr>
 
 ---- PRELIMINARIES ----
 
@@ -29,14 +28,24 @@ FirstName LastName <email@domain.example>
 >> A1: Copy here the declaration of each new or changed `struct' or
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
-
+- New thread member int64_t timer in timer.h . New struct list sleep_list  in timer.h .
+- New function void thread_timer_decrement(void) . New function void thread_sleep(int64_t ticks) .
+- New function void thread_wakeup(void) .
 ---- ALGORITHMS ----
 
 >> A2: Briefly describe what happens in a call to timer_sleep(),
 >> including the effects of the timer interrupt handler.
+- Just call thread_sleep() . It puts the current running thread to sleep list.
+- when timer interrupt occurs, the function thread_timer_decrement() occurs.
+- This function decrement 'timer' member values of struct thread every time
+- timer interrupt called.
 
 >> A3: What steps are taken to minimize the amount of time spent in
 >> the timer interrupt handler?
+-  We add function thread_timer_decrement() called by thread_tick() called by
+-  timer interrupt handler. So we think the amount of time spent in the 
+-  timer interrupt handler will not decrement. But We fully optimize and
+-  minimize the additional time.
 
 ---- SYNCHRONIZATION ----
 
@@ -45,7 +54,9 @@ FirstName LastName <email@domain.example>
 
 >> A6: Why did you choose this design?  In what ways is it superior to
 >> another design you considered?
-
+- Because this design is simple and light. Our new added structure is list which is 
+- already in lib/kernel/list.c . We completed our works just using with already in 
+- system. The advantage of ours is so light and easy to understand. 
 			 PRIORITY SCHEDULING
 			 ===================
 
@@ -68,7 +79,7 @@ FirstName LastName <email@domain.example>
 
 >> B7: Why did you choose this design?  In what ways is it superior to
 >> another design you considered?
- - I thought it was complicated to sort ready_list. Therefore, instead of sorting the list in order of priority, we found and called the thread with the highest priority when next_thread_to_run function is called. Also, if the created thread had higher priority than the current thread when the thread_create, the created thread was yielded.
+ - We thought it was complicated to sort ready_list. Therefore, instead of sorting the list in order of priority, we found and called the thread with the highest priority when next_thread_to_run function is called. Also, if the created thread had higher priority than the current thread when the thread_create, the created thread was yielded.
 
 
 			   SURVEY QUESTIONS
