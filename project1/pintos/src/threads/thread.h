@@ -88,10 +88,14 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
+    int64_t timer;                      /* Store ticks value for the function thread.c:timer_sleep (int64_t ticks).  */
     struct list_elem allelem;           /* List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
+    
+    /* Used as sleep_list in thread.c. */
+    struct list_elem sleepelem;         /* List element. */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -107,10 +111,15 @@ struct thread
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
 
+/* If any thread in list sleep_list has a zero value of timer which is 
+   member of struct thread, return true and else, false. */
+extern bool zero_timer;
+
 void thread_init (void);
 void thread_start (void);
 
 void thread_tick (void);
+void thread_timer_decrement (void);
 void thread_print_stats (void);
 
 typedef void thread_func (void *aux);
@@ -125,6 +134,8 @@ const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
+void thread_sleep (int64_t ticks);
+void thread_wakeup (void);
 
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);

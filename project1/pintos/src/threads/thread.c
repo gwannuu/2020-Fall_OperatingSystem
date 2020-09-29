@@ -11,7 +11,6 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
-#include "../lib/kernel/list.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -24,6 +23,11 @@
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
+
+/* List of threads used by thread_sleep (), thread_wakeup () and 
+   thread_timer_decrement (). After x ticks the thread will be out 
+   from this list and preempt. */
+static struct list sleep_list;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -60,6 +64,10 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
 
+/* If any thread in list sleep_list has a zero value of timer which is
+   member of struct thread, return true and else, false. */
+bool zero_timer;
+
 static void kernel_thread (thread_func *, void *aux);
 
 static void idle (void *aux UNUSED);
@@ -80,7 +88,7 @@ static tid_t allocate_tid (void);
    Also initializes the run queue and the tid lock.
 
    After calling this function, be sure to initialize the page
-   allocator before trying to create any threads with
+  A allocator before trying to create any threads with
    thread_create().
 
    It is not safe to call thread_current() until this function
@@ -93,6 +101,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  list_init (&sleep_list);  /*gwnawoo*/ 
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -135,9 +144,36 @@ thread_tick (void)
   else
     kernel_ticks++;
 
+  /* Decrement every timer member value of threads who are in
+     sleep list. */ 
+  thread_timer_decrement ();
+
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
+}
+
+/* Decrement every member value "timer" which is the member of thread.
+   This function will only be adjusted for the threads who are in 
+   the sleep list now. */ 
+void
+thread_timer_decrement (void)
+{
+  struct list_elem *se;
+
+  for (se = list_begin (&sleep_list); se != list_end (&sleep_list); se = list_next (se))
+  {
+    struct thread *t = list_entry (se, struct thread, sleepelem);
+    t->timer -= 1;
+    if (t->timer == 0)
+      zero_timer = true;
+  }     
+  
+  if (zero_timer)
+  {
+    thread_wakeup ();
+    zero_timer = false;
+  }
 }
 
 /* Prints thread statistics. */
@@ -206,16 +242,19 @@ thread_create (const char *name, int priority,
   sf->ebp = 0;
 
   intr_set_level (old_level);
-  
-  /* Add to run queue. */
 
+  /* Add to run queue. */
   thread_unblock (t);
 
+  /* check whether the new thread's priority is bigger than current
+     thread's priority. If the new thread's priority is bigger than
+     the current's, then yield the new thread. */
   bool check_pri = false;
   if (thread_current ()->priority > priority)
     check_pri = true;
 
-  if (!check_pri) thread_yield();
+  if (!check_pri) 
+    thread_yield ();
 
   return tid;
 }
@@ -323,12 +362,52 @@ thread_yield (void)
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  if (cur != idle_thread) {
+  if (cur != idle_thread)
     list_push_back (&ready_list, &cur->elem);
-  }
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
+}
+
+/* Put the threads who is the running thread currently to the 
+   sleep list. After Ticks ticks, wake it. */
+void
+thread_sleep (int64_t ticks)
+{
+  struct thread *cur = thread_current();
+  enum intr_level old_level;
+ 
+  ASSERT (!intr_context ());
+
+  old_level = intr_disable ();
+  if (ticks <= 0)
+    return;
+  cur->status = THREAD_READY;
+
+  list_push_front (&sleep_list, &cur->sleepelem);
+  cur->timer = ticks;
+  schedule ();
+  
+  list_remove (&cur->elem);
+  intr_set_level (old_level);
+}
+
+/* Put the threads whose timer member value is zero to the 
+   ready list. */
+void
+thread_wakeup (void)
+{
+  struct list_elem *se;
+
+  for (se = list_begin (&sleep_list); se != list_end (&sleep_list); se = list_next (se))
+  {
+    struct thread* t = list_entry (se, struct thread, sleepelem);
+    if (t->timer == 0)
+    {
+      list_push_front (&ready_list, &t->elem);
+      list_remove (&t->sleepelem);
+    }      
+  }
 }
 
 /* Invoke function 'func' on all threads, passing along 'aux'.
@@ -478,12 +557,12 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->timer = 0;
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
-t
    returns a pointer to the frame's base. */
 static void *
 alloc_frame (struct thread *t, size_t size)
@@ -504,20 +583,29 @@ alloc_frame (struct thread *t, size_t size)
 static struct thread *
 next_thread_to_run (void)
 {
+
+/* If the ready_list is not empty, we have to choose the thread
+   which has th highest priority. We compare the priority with
+   the ready list's list_elem sequentially and choose the highest
+   one. Then, remove from ready_list to the highest list_elem,
+   and return its thread. */
   if (list_empty (&ready_list))
     return idle_thread;
-  else {
-    struct list_elem* l_elem = list_front (&ready_list);
-    struct list_elem* high_elem;
-    for (high_elem = l_elem;; l_elem = list_next (l_elem)) {
-      if (list_entry (l_elem, struct thread, elem)->priority > list_entry (high_elem, struct thread, elem)->priority)
+  else
+  {
+    struct list_elem *l_elem =  list_front (&ready_list);
+    struct list_elem *high_elem;
+    for (high_elem = l_elem;; l_elem = list_next (l_elem)) 
+    {
+      if (list_entry (l_elem, struct thread, elem)->priority >
+list_entry (high_elem, struct thread, elem)->priority)
         high_elem = l_elem;
-      if (l_elem->next == NULL) break;
+      if (l_elem->next == NULL) 
+        break;
     }
     list_remove (high_elem);
     return list_entry (high_elem, struct thread, elem);
   }
-//    return list_entry (list_pop_front (&ready_list), struct thread, elem);
 }
 
 /* Completes a thread switch by activating the new thread's page

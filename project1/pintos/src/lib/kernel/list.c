@@ -521,4 +521,4 @@ list_min (struct list *list, list_less_func *less, void *aux)
           min = e; 
     }
   return min;
-} 
+}
