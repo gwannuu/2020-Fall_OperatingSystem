@@ -42,10 +42,11 @@ Gwanwoo Choi <cgw1999@unist.ac.kr>
 
 >> A3: What steps are taken to minimize the amount of time spent in
 >> the timer interrupt handler?
--  We add function thread_timer_decrement() called by thread_tick() called by
--  timer interrupt handler. So we think the amount of time spent in the 
--  timer interrupt handler will not decrement. But We fully optimize and
--  minimize the additional time.
+- We added function thread_timer_decrement() called by thread_tick() called by
+- timer interrupt handler. We just added one line(one function) in the thread_tick() which is
+- called by the timer interrupt handler. And we solve the problem with just adding this which 
+- is so little and efficient. We convinced that should minimize the amount of time spent in the timer
+- interrupt handler.
 
 ---- SYNCHRONIZATION ----
 
