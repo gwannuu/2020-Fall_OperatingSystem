@@ -9,6 +9,7 @@ typedef int pid_t;
 
 /* Number of running process. */
 int proc_cnt;
+/* Total number of files opened so far. */
 int fd_cnt;
 
 /* File Descripter Set. */

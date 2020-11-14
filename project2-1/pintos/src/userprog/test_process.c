@@ -523,8 +523,8 @@ setup_stack (void **esp, char *cl)
 
         /* return address. */
         *(int **)esp -= 1;
-       **(int **)esp = 0x0000ffff; 
-
+        **(int **)esp = 0; 
+      
         /* For debugging purpose. */
 //        hex_dump (0, *esp, 200, 1);
       }

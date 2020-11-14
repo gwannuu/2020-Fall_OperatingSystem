@@ -129,7 +129,6 @@ process_wait (tid_t child_tid)
     return -1;
 
   /* Check whether parent is waiting child. */
-  
   if (!pmt[idx].is_waiting_child)
   {
     pmt[idx].is_waiting_child = true;

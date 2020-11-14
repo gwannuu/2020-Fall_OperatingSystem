@@ -23,26 +23,6 @@ FirstName LastName <email@domain.example>
          ARGUMENT PASSING
          ================
 
----- DATA STRUCTURES ----
-
->> A1: Copy here the declaration of each new or changed `struct' or
->> `struct' member, global or static variable, `typedef', or
->> enumeration.  Identify the purpose of each in 25 words or less.
-
----- ALGORITHMS ----
-
->> A2: Briefly describe how you implemented argument parsing.  How do
->> you arrange for the elements of argv[] to be in the right order?
->> How do you avoid overflowing the stack page?
-
----- RATIONALE ----
-
->> A3: Why does Pintos implement strtok_r() but not strtok()?
-
->> A4: In Pintos, the kernel separates commands into a executable name
->> and arguments.  In Unix-like systems, the shell does this
->> separation.  Identify at least two advantages of the Unix approach.
-
            SYSTEM CALLS
            ============
 
@@ -52,14 +32,53 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
->> B2: Describe how file descriptors are associated with open files.
->> Are file descriptors unique within the entire OS or just within a
->> single process?
+  <  process.h  >
 
----- ALGORITHMS ----
+#define PMT_SIZE 20
+#define FDS_SIZE 10
+
+typedef int pid_t;
+
+/* Number of running process. */
+int proc_cnt;
+/* Total number of files opened so far. */
+int fd_cnt;
+
+/* File Descripter Set. */
+struct file_descripter_set
+{
+  bool is_filled;
+  int fd;
+  struct file *file_ptr;
+};
+
+/* Process Management Table. */
+struct process_management_table
+{
+  bool is_filled;
+  tid_t thread_id;
+  int ret_val;
+  bool is_waiting_child;
+  struct thread *parent_thread;
+  struct file_descripter_set fds[FDS_SIZE];
+};
+struct process_management_table pmt[PMT_SIZE];
+
+  <  syscall.h  >
+
+/* system call 1, exit. */
+void exit (int);
+
+ ALGORITHMS
+---- ----
 
 >> B3: Describe your code for reading and writing user data from the
 >> kernel.
+
+when the data is inputed from the kernel, it is saved at esp in intr_frame (in this, intr_frame *f). First, f->esp has the system call number and we classified according to <syscall-nh.h>.
+When system call needs one variable : argument is in f->esp + 4
+When system call needs two variable : arguments are in f->esp+16, f->esp+20
+When system call needs three variable : arguments are in f->esp+20. f->esp+24, f->esp+28
 
 >> B4: Suppose a system call causes a full page (4,096 bytes) of data
 >> to be copied from user space into the kernel.  What is the least
@@ -70,6 +89,14 @@ FirstName LastName <email@domain.example>
 
 >> B5: Briefly describe your implementation of the "wait" system call
 >> and how it interacts with process termination.
+
+  First, we find the index of process management table for pid_t pid.
+then return process_wait (pid), which is defined in process.c.
+Ub oricess_wait (pid), else if (pmt[idx].parent_thread != t) this 
+means that the parent of child thread should be same with thread_current ().
+Otherwise, the calling child_tid is not son of the callee thread.
+if (!pmt[idx].is_waiting_child) check whether parent is waiting child, then block the curernt thread and after the unblock return the 
+child's return status. Else, return -1.
 
 >> B6: Any access to user program memory at a user-specified address
 >> can fail due to a bad pointer value.  Such accesses must cause the
@@ -85,12 +112,17 @@ FirstName LastName <email@domain.example>
 >> paragraphs, describe the strategy or strategies you adopted for
 >> managing these issues.  Give an example.
 
+ When calling up the arguments from intr_frame, first check the number of arguments according to syscall and put the value in the corresponding address as the argument value.
+In each syscall, if the arguments have a wrong range or value that does not fit with the purpose, return -1 and indicate that is an error case. In other case, call syscall exit immediately to lead to thread_exit.
+For example, if the file to create does not exist, we immediately called exit(-1) to make the program end.
+
 ---- SYNCHRONIZATION ----
 
 >> B7: The "exec" system call returns -1 if loading the new executable
 >> fails, so it cannot return before the new executable has completed
 >> loading.  How does your code ensure this?  How is the load
 >> success/failure status passed back to the thread that calls "exec"?
+
 
 >> B8: Consider parent process P with child process C.  How do you
 >> ensure proper synchronization and avoid race conditions when P
@@ -104,11 +136,20 @@ FirstName LastName <email@domain.example>
 >> B9: Why did you choose to implement access to user memory from the
 >> kernel in the way that you did?
 
+ If we don't use user memory, there is no way to check whether the kernel is accessing the wrog memory.
+So, when we need to manage the memory, we access to user memory and manage the memory space. 
+
 >> B10: What advantages or disadvantages can you see to your design
 >> for file descriptors?
 
+  advantages : easy to use. when open called, just use the file descriptor set.
+  disadvantages : too many wasted spaces. We initializes the fixed size file descriptor set to 10 for each process.
+
 >> B11: The default tid_t to pid_t mapping is the identity mapping.
 >> If you changed it, what advantages are there to your approach?
+
+Pintos is a one-to-one mapping single threaded process.
+So, we don't have to change the default mapping.
 
          SURVEY QUESTIONS
          ================

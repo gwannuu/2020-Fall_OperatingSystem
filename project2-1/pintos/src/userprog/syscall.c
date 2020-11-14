@@ -15,6 +15,10 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
+  /*struct thread *cur = thread_current ();
+  uint32_t *pd;
+  pd = cur->pagedir;
+  f->esp = pd-2;*/
   printf ("system call!\n");
   thread_exit ();
 }

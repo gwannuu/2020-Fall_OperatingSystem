@@ -40,6 +40,7 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f)  /* UNUSED deleted. */ 
 {
+  printf("sys num : %d\n", *(int *)(f->esp));
   struct thread *t = thread_current ();
   void *pd = pagedir_get_page (t->pagedir, f->esp);
   if (!pd)
@@ -159,22 +160,12 @@ exec (const char *cmd_line)
   int size = strlen (cmd_line);
   char cmd_copy[size];
   strlcpy (cmd_copy, cmd_line, size + 1);
-//  char *file_name = strtok_r (cmd_copy, " ", &args);
-
-//  struct dir *dir = dir_open_root ();
-/*  struct inode *inode = NULL;
-  if (!dir_lookup (dir, file_name, &inode))
-  {
-    filesys_open (file_name);
-    printf("not exist\n");
-    dir_close (dir);
-    return -1;
-  }
-  dir_close (dir);*/
 
   tid_t child_tid = process_execute (cmd_line);
   if (child_tid < 0)
+  {
     return -1;
+  }
   return child_tid;
 };
 
@@ -184,14 +175,6 @@ wait (pid_t pid)
   int idx = search_idx (pid);
   if (idx == -1)
     return -1;
-/*
-  int result = process_wait (pid);
-  
-  struct thread *t = thread_current ();
-  idx = search_idx (t->tid);
-  pmt[idx].is_waiting_child = false;
-  return result;
-*/
   return process_wait (pid);
 }
 
@@ -255,6 +238,11 @@ read (int fd, void *buffer, unsigned size)
     off_t bytes_read = input_getc ();
     return bytes_read;
   }
+
+  void *low_limit = (void *) 0x8048000;
+  void *upper_limit = (void *) 0xc0000000;
+  if (buffer < low_limit || buffer >= upper_limit)
+    return -1;
 
   struct thread *t = thread_current ();
   int idx = search_idx (t->tid);
