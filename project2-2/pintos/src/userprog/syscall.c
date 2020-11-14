@@ -15,6 +15,7 @@
 #include "userprog/pagedir.h"
 #include <devices/input.h>
 #include "filesys/directory.h"
+#include "threads/loader.h"
 static void syscall_handler (struct intr_frame *);
 
 void halt (void);
@@ -39,7 +40,6 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f)  /* UNUSED deleted. */ 
 {
-  //printf("sys num : %d\n", *(int *)(f->esp));
   struct thread *t = thread_current ();
   void *pd = pagedir_get_page (t->pagedir, f->esp);
   if (!pd)
@@ -74,7 +74,7 @@ syscall_handler (struct intr_frame *f)  /* UNUSED deleted. */
     case 4:
     {
       const char *file = *(const char **)(f->esp + 16);
-      unsigned initial_size = *(unsigned *)(f->esp + 20);
+      unsigned initial_size = *(unsigned *)(f->esp + 20); 
       f->eax = create (file, initial_size);
       break;
     }
@@ -156,7 +156,6 @@ exit (int status)
 pid_t
 exec (const char *cmd_line)
 {
-  char *args;
   int size = strlen (cmd_line);
   char cmd_copy[size];
   strlcpy (cmd_copy, cmd_line, size + 1);
@@ -200,7 +199,7 @@ bool
 create (const char *file, unsigned initial_size)
 {
   if (file == NULL)
-    return false;
+    exit (-1);
   bool is_file_created = filesys_create (file, initial_size);  
   return is_file_created;
 }
@@ -256,7 +255,7 @@ read (int fd, void *buffer, unsigned size)
     off_t bytes_read = input_getc ();
     return bytes_read;
   }
-  
+
   struct thread *t = thread_current ();
   int idx = search_idx (t->tid);
   int fds_idx = search_fds_idx (idx, fd);
