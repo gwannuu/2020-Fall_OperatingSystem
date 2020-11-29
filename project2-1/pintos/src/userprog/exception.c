@@ -5,6 +5,7 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+#include "userprog/syscall.h"
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
@@ -86,18 +87,20 @@ kill (struct intr_frame *f)
     case SEL_UCSEG:
       /* User's code segment, so it's a user exception, as we
          expected.  Kill the user process.  */
-      printf ("%s: dying due to interrupt %#04x (%s).\n",
-              thread_name (), f->vec_no, intr_name (f->vec_no));
-      intr_dump_frame (f);
-      thread_exit (); 
-
+//      printf ("%s: dying due to interrupt %#04x (%s).\n",
+//              thread_name (), f->vec_no, intr_name (f->vec_no));
+//      intr_dump_frame (f);
+//      thread_exit (); 
+      exit (-1);
     case SEL_KCSEG:
       /* Kernel's code segment, which indicates a kernel bug.
          Kernel code shouldn't throw exceptions.  (Page faults
          may cause kernel exceptions--but they shouldn't arrive
          here.)  Panic the kernel to make the point.  */
-      intr_dump_frame (f);
-      PANIC ("Kernel bug - unexpected interrupt in kernel"); 
+//      intr_dump_frame (f);
+//      PANIC ("Kernel bug - unexpected interrupt in kernel");
+//      printf ("SEL_KCSEG: \t");
+      exit (-1);
 
     default:
       /* Some other code segment?  Shouldn't happen.  Panic the
@@ -122,9 +125,9 @@ kill (struct intr_frame *f)
 static void
 page_fault (struct intr_frame *f) 
 {
-  bool not_present;  /* True: not-present page, false: writing r/o page. */
-  bool write;        /* True: access was write, false: access was read. */
-  bool user;         /* True: access by user, false: access by kernel. */
+//  bool not_present;  /* True: not-present page, false: writing r/o page. */
+//  bool write;        /* True: access was write, false: access was read. */
+//  bool user;         /* True: access by user, false: access by kernel. */
   void *fault_addr;  /* Fault address. */
 
   /* Obtain faulting address, the virtual address that was
@@ -144,18 +147,19 @@ page_fault (struct intr_frame *f)
   page_fault_cnt++;
 
   /* Determine cause. */
-  not_present = (f->error_code & PF_P) == 0;
-  write = (f->error_code & PF_W) != 0;
-  user = (f->error_code & PF_U) != 0;
+//  not_present = (f->error_code & PF_P) == 0;
+//  write = (f->error_code & PF_W) != 0;
+//  user = (f->error_code & PF_U) != 0;
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
-  printf ("Page fault at %p: %s error %s page in %s context.\n",
-          fault_addr,
-          not_present ? "not present" : "rights violation",
-          write ? "writing" : "reading",
-          user ? "user" : "kernel");
+//  printf ("Page fault at %p: %s error %s page in %s context.\n",
+//          fault_addr,
+//          not_present ? "not present" : "rights violation",
+//          write ? "writing" : "reading",
+ //         user ? "user" : "kernel");
+//  printf ("fault_addr : %p tid : %d\n", fault_addr, thread_current () ->tid);         
   kill (f);
 }
 

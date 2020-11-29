@@ -18,6 +18,9 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+#include "filesys/file.h"
+#include "filesys/directory.h"
+
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp, char *args);
 
@@ -28,6 +31,23 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp, char *ar
 tid_t
 process_execute (const char *file_name) 
 {
+  if (!is_start)
+    {
+      lock_init (&exit_lock);
+      lock_init (&exec_lock);
+      lock_init (&wait_lock);
+      lock_init (&create_lock);
+      lock_init (&remove_lock);
+      lock_init (&open_lock);
+      lock_init (&filesize_lock);
+      lock_init (&read_lock);
+      lock_init (&write_lock);
+      lock_init (&seek_lock);
+      lock_init (&tell_lock);
+      lock_init (&close_lock);
+      lock_init (&filesys_lock);
+      is_start = true;
+    }
   char *fn_copy;
   tid_t tid;
 
@@ -38,10 +58,38 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  /* Copy file name FILE_NAME. */
+  int size = strlen (file_name);
+  char fn_copy_[size + 1];
+  char *args;
+  strlcpy (fn_copy_, file_name, size + 1);
+  char *file_name_ = strtok_r (fn_copy_, " ", &args);
+  int charidx = 0;
+  while (file_name_[charidx] != ' ' && file_name_[charidx] != '\0') 
+    charidx++;
+  
+  struct dir *dir = dir_open_root ();
+  struct inode *inode = NULL;
+  
+  if (!dir_lookup (dir, file_name_, &inode))
+    return -1;
+   
+
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+ 
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
+  
+  int idx = search_empty ();
+  pmt[idx].is_filled = true;
+  pmt[idx].thread_id = tid;
+  pmt[idx].parent_thread = thread_current ();
+  memmove (pmt[idx].name, file_name_, charidx+1 > 16 ? 16 : charidx+1);//  int par_idx = search_idx (thread_current ()->tid);
+//  insert_wcl (par_idx, tid);  
+
+  proc_cnt++;
+ 
   return tid;
 }
 
@@ -91,11 +139,239 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
+{
+  
+  struct thread *t = thread_current ();    
+
+  /* Find the child index of process management table. */
+  int chd_idx = search_idx (child_tid);
+  if (chd_idx == -1)
+    return -1;
+
+  /* If child_tid process is grandchild, return -1. (Doesn't match) */
+  else if (pmt[chd_idx].parent_thread != t)
+    return -1;
+
+  /* Child is already dead by kernel. */
+  if (pmt[chd_idx].is_dead == true)
+    return pmt[chd_idx].ret_val;
+  
+  /* Child is not dead. */
+  if (child_tid == 3)
+  {
+    enum intr_level old_level = intr_get_level ();
+    intr_set_level (INTR_OFF);
+    thread_block ();
+    intr_set_level (old_level);
+  } 
+  else
+  { 
+    int par_idx = search_idx (t->tid);
+    /* Check whether parent is waiting child. */
+    if (!check_wcl (par_idx, child_tid))
+    {
+      pmt[par_idx].waiting_child_cnt++;
+      insert_wcl (par_idx, child_tid);
+      enum intr_level old_level = intr_get_level ();
+      intr_set_level (INTR_OFF);
+      thread_block ();
+      intr_set_level (old_level);
+//      remove_wcl (par_idx, child_tid);
+    }
+     /* Wait twice. */
+    else
+      return -1;
+  }
+  return pmt[chd_idx].ret_val;
+}
+
+/* check whether pid of child is in the parent's waiting child list. */
+bool
+check_wcl (int idx, tid_t child_tid)
 {
   int i = 0;
-  for(i = 0; i < 9999999; ++i);
-  return -1;
+  while (pmt[idx].waiting_child_list[i] != child_tid)
+    {
+      i++;
+      if (i >= WCL_SIZE)
+        return false;
+    }
+  return true;
+}
+
+/* Insert the pid of child in parent's waiting child list. */
+void
+insert_wcl (int idx, tid_t child_tid)
+{
+  int empty_idx = 0;
+  while (pmt[idx].waiting_child_list[empty_idx] != 0)
+    {
+      empty_idx++;
+      ASSERT (empty_idx < WCL_SIZE);
+    }
+  pmt[idx].waiting_child_list[empty_idx] = child_tid;
+}
+
+/* Remove the pid of child in parent's waiting child list. */
+void
+remove_wcl (int idx, tid_t child_tid)
+{
+  int i = 0;
+  while (pmt[idx].waiting_child_list[i] != child_tid)
+    {
+      i++;
+      ASSERT (i < WCL_SIZE);
+    }
+  pmt[idx].waiting_child_list[i] = 0;
+}
+
+/* Insert file descriptor set for a file in curernt file list. */
+void
+insert_cfl_fd (int fd, struct file *file)
+{
+  int idx = 0;
+  while (cfl[idx].file_ptr != file)
+    {
+      idx++;
+      ASSERT (idx < CFL_SIZE);
+    }
+  int fd_idx = 0;
+  while (cfl[idx].fd[fd_idx] != 0)
+    {
+      fd_idx++;
+      ASSERT (fd_idx < FD_SIZE);
+    }
+  cfl[idx].fd[fd_idx] = fd;
+}
+
+/* Remove file descriptor set for a file in current file list. */
+void
+remove_cfl_fd (int fd, struct file *file)
+{
+  
+  int idx = 0;
+  while (cfl[idx].file_ptr != file)
+    {
+      idx++;
+      ASSERT (idx < CFL_SIZE);
+    }
+  int fd_idx = 0;
+  while (cfl[idx].fd[fd_idx] != fd)
+    {
+      fd_idx++;
+      ASSERT (fd_idx < FD_SIZE);
+    }
+  cfl[idx].fd[fd_idx] = 0;
+}
+/* Find the idx in Process Management Table for TID thread. */
+int
+search_idx (tid_t tid)
+{
+  int i = 0;
+  while (pmt[i].thread_id != tid)
+  {
+    i++;
+    if (i >= PMT_SIZE)
+      return -1;
+  }
+  return i;
+}
+  
+/* Find the foremost blank idx in Process Management Table. */
+int
+search_empty (void)
+{
+  int i = 0;
+  while (pmt[i].is_filled)
+  {
+    i++;
+    ASSERT (i <= PMT_SIZE);
+  }
+  return i;
+}
+
+/* Find the File Descripter Set index in pmt[idx]. */
+int
+search_fds_idx (int idx, int fd)
+{
+  int i = 0;
+  while (pmt[idx].fds[i].fd != fd)
+    {
+      i++;
+      if (i >= FD_SIZE)
+        return -1;
+    }
+  return i;
+}
+
+/* Find the File Mapping index which is empty. */
+int
+search_fds_empty (int idx)
+{
+  int i = 0;
+  while (pmt[idx].fds[i].fd != 0)
+    {
+      i++;
+      ASSERT (i < FMT_SIZE);
+    }
+  return i;
+}
+
+/* Find the index of file name FN in current file list. */
+int
+search_cfl_idx_same_fn_filename (const char *fn)
+{
+  int i = 0;
+  while (strcmp(cfl[i].file_name, fn))
+    {
+      i++;
+      if (i >= CFL_SIZE)
+        return -1;
+    }
+  return i;
+}
+
+/* Find the index of current file list which is empty. */
+int
+search_cfl_empty (void)
+{
+  int i = 0;
+  while (cfl[i].is_filled)
+    {
+      i++;
+      ASSERT (i < CFL_SIZE);
+    }
+  return i;
+}
+
+/* Find the index of file mapping table which is same with fd. */
+int
+search_fmt_idx (int fd)
+{
+  if (fd == 0)
+    return -1;
+  int i = 0;
+  while (fmt[i].fd != fd)
+  {
+    i++;
+    if (i >= FMT_SIZE)
+      return -1;
+  }
+  return i;
+}
+
+/* Find the index of file mapping table which is empty. */
+int
+search_fmt_empty (void)
+{
+  int i = 0;
+  while (fmt[i].fd != 0)
+  {
+    i++;
+    ASSERT (i <FMT_SIZE)
+  }
+  return i;
 }
 
 /* Free the current process's resources. */
@@ -121,6 +397,7 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+  proc_cnt--;
 }
 
 /* Sets up the CPU for running user code in the current
@@ -228,7 +505,9 @@ load (const char *file_name, void (**eip) (void), void **esp, char *cl)
     goto done;
 
   /* Open executable file. */
+  discontinue_until_acquire_lock (&filesys_lock);
   file = filesys_open (file_name);
+  lock_release (&filesys_lock);
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
@@ -441,9 +720,10 @@ setup_stack (void **esp, char *cl)
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
+      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE * proc_cnt, kpage, true);
       if (success){
-        *esp = PHYS_BASE;
+        *esp = PHYS_BASE - PGSIZE * (proc_cnt - 1);
+//        *esp = PHYS_BASE - PGSIZE;
 
         /* Initialize the variables. */
         int ptr = strlen(cl) - 1;
@@ -521,12 +801,16 @@ setup_stack (void **esp, char *cl)
           *(char **)esp -= 4;
         } 
 
+        /* argv, argc. */
+        memmove (*(char **)esp - 4, (char **)esp, 4);
+        *(char **)esp -= 4;
+        *(int **)esp -= 1;
+        **(int **)esp = args_cnt;
+
         /* return address. */
         *(int **)esp -= 1;
-       **(int **)esp = 0x0000ffff; 
-
-        /* For debugging purpose. */
-//        hex_dump (0, *esp, 200, 1);
+        **(int **)esp = 0; 
+    
       }
       else
         palloc_free_page (kpage);
@@ -552,4 +836,17 @@ install_page (void *upage, void *kpage, bool writable)
      address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
+}
+
+void
+discontinue_until_acquire_lock (struct lock *lock)
+{
+  while (true)
+    {
+      if (lock_held_by_current_thread (lock))
+        break;
+      else
+        if (!lock_try_acquire (lock))
+          continue;
+    }
 }
