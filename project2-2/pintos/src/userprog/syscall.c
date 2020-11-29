@@ -40,7 +40,6 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f)  /* UNUSED deleted. */ 
 {
-  printf("sys num : %d\n", *(int *)(f->esp));
   struct thread *t = thread_current ();
   void *pd = pagedir_get_page (t->pagedir, f->esp);
   if (!pd)
