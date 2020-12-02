@@ -214,7 +214,6 @@ exec (const char *cmd_line)
       lock_release (&exec_lock);
       exit (-1);
     }
-  int size = strlen (cmd_line);
 
   tid_t child_tid = process_execute (cmd_line);
   if (child_tid < 0)
