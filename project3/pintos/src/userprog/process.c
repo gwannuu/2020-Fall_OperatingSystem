@@ -15,11 +15,13 @@
 #include "threads/init.h"
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
-#include "threads/thread.h"
+//#include "threads/thread.h"
 #include "threads/vaddr.h"
 
 #include "filesys/file.h"
 #include "filesys/directory.h"
+#include "threads/malloc.h"
+#include <stdint.h>
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp, char *args);
@@ -106,6 +108,9 @@ start_process (void *file_name_)
   char *file_name = strtok_r (file_name_, " ", &file_args);
   struct intr_frame if_;
   bool success;
+
+  struct thread *t = thread_current ();
+  hash_init (&t->vmhash, vpage_hash, vpage_less, NULL); 
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -481,9 +486,7 @@ struct Elf32_Phdr
 
 static bool setup_stack (void **esp, char *cl);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
-static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
-                          uint32_t read_bytes, uint32_t zero_bytes,
-                          bool writable);
+static bool load_segment (const char *file_name, struct file *file, off_t ofs, uint8_t *upage, uint32_t read_bytes, uint32_t zero_bytes, bool writable);
 
 /* Loads an ELF executable from FILE_NAME into the current thread.
    Stores the executable's entry point into *EIP
@@ -576,9 +579,9 @@ load (const char *file_name, void (**eip) (void), void **esp, char *cl)
                   read_bytes = 0;
                   zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
                 }
-              if (!load_segment (file, file_page, (void *) mem_page,
+              if (!load_segment (file_name, file, file_page, (void *) mem_page,
                                  read_bytes, zero_bytes, writable))
-                goto done;
+               goto done;
             }
           else
             goto done;
@@ -665,14 +668,17 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
    Return true if successful, false if a memory allocation error
    or disk read error occurs. */
 static bool
-load_segment (struct file *file, off_t ofs, uint8_t *upage,
+load_segment (const char *file_name, struct file *file, off_t ofs, uint8_t *upage,
               uint32_t read_bytes, uint32_t zero_bytes, bool writable) 
 {
   ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
-  file_seek (file, ofs);
+  struct thread *t = thread_current ();
+  off_t pos = ofs;
+
+//  file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
       /* Calculate how to fill this page.
@@ -681,30 +687,47 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
+      struct vpage *vpage;
+      vpage = malloc (sizeof *vpage);
+      vpage->is_load = false;
+      vpage->writable = writable;
+      vpage->vaddr = upage;
+      vpage->page_read_bytes = read_bytes;
+      vpage->page_zero_bytes = zero_bytes;
+      memmove (vpage->name, file_name, 16);
+      vpage->off = pos;
+      
+      hash_insert (&t->vmhash, &vpage->h_elem);
+      struct vpage* vptr =  hash_entry (hash_find (&t->vmhash, &vpage->h_elem), struct vpage, h_elem);
+//      printf ("insert check : %p\n", vptr->vaddr);
+
       /* Get a page of memory. */
-      uint8_t *kpage = palloc_get_page (PAL_USER);
-      if (kpage == NULL)
-        return false;
+//      uint8_t *kpage = palloc_get_page (PAL_USER);
+//      if (kpage == NULL)
+//        return false;
 
       /* Load this page. */
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
+//      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
+//        {
+//          palloc_free_page (kpage);
+//          return false; 
+//        }
+//      memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
       /* Add the page to the process's address space. */
-      if (!install_page (upage, kpage, writable)) 
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
+ //     if (!install_page (upage, kpage, writable)) 
+ //       {
+ //         palloc_free_page (kpage);
+ //         return false; 
+ //       }
 
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
+
+      pos += page_read_bytes;
+     
     }
   return true;
 }

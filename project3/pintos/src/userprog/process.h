@@ -11,6 +11,8 @@
 #define WCL_SIZE 21
 #define NAME_SIZE 16
 
+#include "vm/page.h"
+
 typedef int pid_t;
 
 /* Check whether user process is started. */

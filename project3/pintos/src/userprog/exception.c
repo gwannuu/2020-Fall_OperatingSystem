@@ -6,11 +6,17 @@
 #include "threads/thread.h"
 
 #include "userprog/syscall.h"
+#include "userprog/process.h"
+#include "threads/palloc.h"
+#include "vm/page.h"
+#include "userprog/pagedir.h"
+#include "threads/vaddr.h"
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
 static void kill (struct intr_frame *);
 static void page_fault (struct intr_frame *);
+static bool install_page (void *upage, void *kpage, bool writable);
 
 /* Registers handlers for interrupts that can be caused by user
    programs.
@@ -160,6 +166,61 @@ page_fault (struct intr_frame *f)
 //          write ? "writing" : "reading",
  //         user ? "user" : "kernel");
 //  printf ("fault_addr : %p tid : %d\n", fault_addr, thread_current () ->tid);         
-  kill (f);
+//  kill (f);
+//  printf ("fault_addr : %p\n", fault_addr);
+//  printf ("f->eip : %p\n", f->eip);
+
+  struct thread *t = thread_current ();
+  struct hash_iterator i;
+  struct vpage *vpage;
+  struct file *file;
+  bool success = false;
+  hash_first (&i, &t->vmhash);
+  while (hash_next (&i))
+    {
+      vpage = hash_entry (hash_cur (&i), struct vpage, h_elem);        
+      if ((unsigned) vpage->vaddr == ((unsigned) fault_addr & ~PGMASK))
+        {
+          ASSERT (!vpage->is_load);
+          uint8_t *kpage = palloc_get_page (PAL_USER);
+          ASSERT (kpage != NULL);
+
+          discontinue_until_acquire_lock (&filesys_lock);
+          file = filesys_open (vpage->name);
+          lock_release (&filesys_lock);
+          file_seek (file, vpage->off);
+          if (file_read (file, kpage, vpage->page_read_bytes) != (int) 
+vpage->page_read_bytes)
+            {
+              palloc_free_page (kpage);
+              printf ("Pull a new page fail!");
+              exit(-1);
+            }
+          memset (kpage + vpage->page_read_bytes, 0, vpage->page_zero_bytes);
+          if (!install_page (vpage->vaddr, kpage, vpage->writable))    
+            {
+              palloc_free_page (kpage);
+              printf ("Pull a new page fail!");
+              exit(-1);
+            }
+          vpage->is_load = true;
+          success = true;
+          break;
+        }
+    }
+  file_close (file);
+  if (!success)
+    exit(-1);
+  return;
 }
 
+static bool
+install_page (void *upage, void *kpage, bool writable)
+{
+  struct thread *t = thread_current ();
+
+  /* Verify that there's not already a page at that virtual
+     address, then map our page there. */
+  return (pagedir_get_page (t->pagedir, upage) == NULL    
+          && pagedir_set_page (t->pagedir, upage, kpage, writable));   
+}
