@@ -16,6 +16,11 @@
 #include <devices/input.h>
 #include "filesys/directory.h"
 #include "threads/loader.h"
+
+#include "threads/malloc.h"
+#include "vm/page.h"
+#include "threads/pte.h"
+
 static void syscall_handler (struct intr_frame *);
 
 void halt (void);
@@ -31,6 +36,8 @@ int write (int fd, const void *buffer, unsigned size);
 void seek (int fd, unsigned position);
 unsigned tell (int fd);
 void close (int fd);
+mapid_t mmap (int fd, void *addr);
+void munmap (mapid_t mapping);
 bool check_address (const char *);
 
 void
@@ -50,90 +57,103 @@ syscall_handler (struct intr_frame *f)
   switch (*(int *)(f->esp))
   {
     case 0:
-    {
-      halt ();
-      break;
-    }
+      {
+        halt ();
+        break;
+      }
     case 1:
-    {
-      if (f->esp + 4 >= PHYS_BASE)
+      {
+        if (f->esp + 4 >= PHYS_BASE)
         exit (-1);
-      int status = *(int *)(f->esp + 4);
-      exit (status);
-      break;
-    }
+        int status = *(int *)(f->esp + 4);
+        exit (status);
+        break;
+      }
     case 2:
-    {
-      const char *cmd_line = *(const char **)(f->esp + 4); 
-      f->eax = exec (cmd_line);
-      break;
-    }
+      {
+        const char *cmd_line = *(const char **)(f->esp + 4); 
+        f->eax = exec (cmd_line);
+        break;
+      }
     case 3:
-    {
-      pid_t pid = *(int *)(f->esp + 4);
-      f->eax = wait (pid);
-      break;
-    }
+      {
+        pid_t pid = *(int *)(f->esp + 4);
+        f->eax = wait (pid);
+        break;
+      }
     case 4:
-    {
-      const char *file = *(const char **)(f->esp + 16);
-      unsigned initial_size = *(unsigned *)(f->esp + 20); 
-      f->eax = create (file, initial_size);
-      break;
-    }
+      {
+        const char *file = *(const char **)(f->esp + 16);
+        unsigned initial_size = *(unsigned *)(f->esp + 20); 
+        f->eax = create (file, initial_size);
+        break;
+      }
     case 5:
-    {
-      const char *file = *(const char **)(f->esp + 4);
-      f->eax = remove (file);
-      break;
-    }
+      {
+        const char *file = *(const char **)(f->esp + 4);
+        f->eax = remove (file);
+        break;
+      }
     case 6:
-    {
-      const char *file = *(const char **)(f->esp + 4);
-      f->eax = open (file);
-      break;
-    }
+      {
+        const char *file = *(const char **)(f->esp + 4);
+        f->eax = open (file);
+        break;
+      }
     case 7:
-    {
-      int fd = *(int *)(f->esp + 4);
-      f->eax = filesize (fd);
-      break;
-    }
+      {
+        int fd = *(int *)(f->esp + 4);
+        f->eax = filesize (fd);
+        break;
+      }
     case 8:
-    {
-      int fd = *(int *)(f->esp + 20);
-      void *buffer = *(char **)(f->esp + 24);
-      unsigned size = *(unsigned *)(f->esp + 28);
-      f->eax = read (fd, buffer, size);
-      break;
-    }
+      {
+        int fd = *(int *)(f->esp + 20);
+        void *buffer = *(char **)(f->esp + 24);
+        unsigned size = *(unsigned *)(f->esp + 28);
+        f->eax = read (fd, buffer, size);
+        break;
+      }
     case 9:
-    {
-      int fd = *(int *)(f->esp + 20);
-      const void *buffer = *(const char **)(f->esp + 24);
-      unsigned size = *(unsigned *)(f->esp + 28);
-      f->eax = write (fd, buffer, size);
-      break;
-    }
+      {
+        int fd = *(int *)(f->esp + 20);
+        const void *buffer = *(const char **)(f->esp + 24);
+        unsigned size = *(unsigned *)(f->esp + 28);
+        f->eax = write (fd, buffer, size);
+        break;
+      }
     case 10:
-    {
-      int fd = *(int *)(f->esp + 16);
-      unsigned position = *(unsigned *)(f->esp + 20);
-      seek (fd, position);
-      break;
-    }
+      {
+        int fd = *(int *)(f->esp + 16);
+        unsigned position = *(unsigned *)(f->esp + 20);
+        seek (fd, position);
+        break;
+      }
     case 11:
-    {
-      int fd = *(int *)(f->esp + 4);
-      f->eax = tell (fd);
-      break;
-    }
+      {
+        int fd = *(int *)(f->esp + 4);
+        f->eax = tell (fd);
+        break;
+      }
     case 12:
-    {
-      int fd = *(int *)(f->esp + 4);
-      close (fd);
-      break; 
-    }
+      {
+        int fd = *(int *)(f->esp + 4);
+        close (fd);
+        break; 
+      }
+    case 13:
+      {
+        int fd = *(int *)(f->esp + 16);
+        void *addr = *(void **)(f->esp + 20);  
+        f->eax = mmap (fd, addr);
+        break;
+      }
+    case 14:
+      {
+        mapid_t mapping = *(int *)(f->esp + 4);
+        munmap (mapping);
+        break;
+      }
   }
 }
 
@@ -180,6 +200,8 @@ exit (int status)
       if (fmt_idx != -1)
         close (fmt[fmt_idx].fd);
     }
+
+  /* Close the whole */ 
 
 /*
   if (pmt[par_idx].waiting_child_cnt)
@@ -518,6 +540,78 @@ close (int fd)
   lock_release (&close_lock);
 }
 
+mapid_t
+mmap (int fd, void *addr)
+{
+  if (fd == 0 || fd == 1 || free_cnt <= 0 || (unsigned) addr & PGMASK)
+    return -1;
+  int fmt_idx = search_fmt_idx (fd);
+  
+  /* If the file whose fd num is FD don't exist, fail. */
+  if (fmt_idx == -1)
+    return -1;
+
+  int cfl_idx = fmt[fmt_idx].cfl_idx;
+  /* If the file is already closed, panic. */
+  if (!cfl[cfl_idx].is_opened)
+    PANIC ("Trying to map closed file is inhibited!\n");
+  struct file *mfile = file_reopen (cfl[cfl_idx].file_ptr);
+
+  /* If the opened file size is 0, fail. */
+  int remain_file_length = file_length (mfile);
+  if (!remain_file_length)
+    {
+      file_close (mfile);
+      return -1;
+    }
+  map_cnt++;
+
+  int page_num = 0;
+  struct thread *t = thread_current ();
+  while (remain_file_length > 0)
+    {
+      struct vpage *vpage = malloc (sizeof *vpage);
+      vpage->type = MMAP;
+      memmove (vpage->name, cfl[cfl_idx].file_name, 16);
+      vpage->file = mfile;
+      vpage->is_load = false;
+      /* True  아닐 수도 있음. */
+      vpage->writable = true;
+      vpage->vaddr = (void *) ((int) addr + (page_num * PGSIZE)); 
+      vpage->paddr = NULL;
+      vpage->page_read_bytes = remain_file_length > PGSIZE ? PGSIZE : remain_file_length;
+      vpage->page_zero_bytes = vpage->page_read_bytes == PGSIZE ? 0 : PGSIZE - remain_file_length;
+      vpage->off = page_num * PGSIZE; 
+      vpage->type = MMAP;
+      vpage->appendix = map_cnt + 1; 
+      
+      list_push_front (&t->mmap_list, &vpage->list_elem);    
+
+      /* Advance. */
+      remain_file_length -= PGSIZE; 
+      page_num++;
+    }
+  return map_cnt + 1;
+}
+
+void
+munmap (mapid_t mapping)
+{
+  struct thread *t = thread_current ();
+  struct list_elem *e;
+  for (e = list_begin (&t->mmap_list); e != list_end (&t->mmap_list); e = list_next (e))
+    {
+      struct vpage *vpage = list_entry (e, struct vpage, list_elem);
+      if (vpage->appendix == mapping)
+        {
+          /* Delete element from mmap_list. */
+          e = list_remove (e);
+          e = list_prev (e);
+          free (vpage);
+        }
+    }
+}
+
 bool
 check_address (const char *addr)
 {
@@ -527,3 +621,4 @@ check_address (const char *addr)
     return true;
   return false;
 }
+

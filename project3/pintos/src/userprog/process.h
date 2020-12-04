@@ -10,8 +10,10 @@
 #define FDS_SIZE 6
 #define WCL_SIZE 21
 #define NAME_SIZE 16
+#define MLIST_SIZE 5
 
 #include "vm/page.h"
+#include "vm/frame.h"
 
 typedef int pid_t;
 
@@ -61,6 +63,7 @@ struct process_management_table
 	  bool is_dead;									/* exit */
 	  struct thread *parent_thread;	/* process_execute () */
 	  struct file_descriptor_set fds[FDS_SIZE];							/* open,close */
+		int mmap_list[MLIST_SIZE];
 	};
 struct process_management_table pmt[PMT_SIZE];
 

@@ -35,6 +35,8 @@ process_execute (const char *file_name)
 {
   if (!is_start)
     {
+      free_cnt = 383;
+      list_init (&p_mem);
       lock_init (&exit_lock);
       lock_init (&exec_lock);
       lock_init (&wait_lock);
@@ -111,6 +113,7 @@ start_process (void *file_name_)
 
   struct thread *t = thread_current ();
   hash_init (&t->vmhash, vpage_hash, vpage_less, NULL); 
+  list_init (&t->mmap_list);
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -383,14 +386,44 @@ search_fmt_empty (void)
 void
 process_exit (void)
 {
+  /* Delay to remove the kpage which is mapped to stack. Don't forget to do it! */
+ 
   struct thread *cur = thread_current ();
   uint32_t *pd;
+  struct list_elem *e;
+  struct hash_iterator i;
+  hash_first (&i, &cur->vmhash);
 
+  /* Remove frame from the physical memory. */
+  while (hash_next (&i))
+    {
+      struct vpage *vpage = hash_entry (hash_cur (&i), struct vpage, h_elem);
+      bool success = false;
+      for (e = list_begin (&p_mem); e != list_end (&p_mem); e = list_next (e))
+        {
+          struct frame *frame = list_entry (e, struct frame, list_elem);
+          if (frame->addr == vpage->paddr)
+            {
+              list_remove (&frame->list_elem);
+              free (frame);
+              success = true;
+              break;
+            }
+        }
+//      if (!success)
+//        PANIC ("fail to remove frame!\n");  
+    }
+            
+  /* Destroy the hash table of current thread. */    
+  hash_destroy (&cur->vmhash, vpage_action);
+//  printf ("after finish cur thread %s remaining free cnt : %d\n", cur->name, free_cnt);
+  
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
   if (pd != NULL) 
     {
+      
       /* Correct ordering here is crucial.  We must set
          cur->pagedir to NULL before switching page directories,
          so that a timer interrupt can't switch back to the
@@ -689,13 +722,17 @@ load_segment (const char *file_name, struct file *file, off_t ofs, uint8_t *upag
 
       struct vpage *vpage;
       vpage = malloc (sizeof *vpage);
+      vpage->file = NULL;
       vpage->is_load = false;
       vpage->writable = writable;
       vpage->vaddr = upage;
-      vpage->page_read_bytes = read_bytes;
-      vpage->page_zero_bytes = zero_bytes;
+      vpage->paddr = NULL;
+      vpage->page_read_bytes = page_read_bytes;
+      vpage->page_zero_bytes = page_zero_bytes;
       memmove (vpage->name, file_name, 16);
       vpage->off = pos;
+      vpage->type = NORMAL;
+      vpage->appendix = 0;
       
       hash_insert (&t->vmhash, &vpage->h_elem);
       struct vpage* vptr =  hash_entry (hash_find (&t->vmhash, &vpage->h_elem), struct vpage, h_elem);

@@ -11,6 +11,7 @@
 #include "vm/page.h"
 #include "userprog/pagedir.h"
 #include "threads/vaddr.h"
+#include "threads/malloc.h"
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
@@ -152,28 +153,13 @@ page_fault (struct intr_frame *f)
   /* Count page faults. */
   page_fault_cnt++;
 
-  /* Determine cause. */
-//  not_present = (f->error_code & PF_P) == 0;
-//  write = (f->error_code & PF_W) != 0;
-//  user = (f->error_code & PF_U) != 0;
-
-  /* To implement virtual memory, delete the rest of the function
-     body, and replace it with code that brings in the page to
-     which fault_addr refers. */
-//  printf ("Page fault at %p: %s error %s page in %s context.\n",
-//          fault_addr,
-//          not_present ? "not present" : "rights violation",
-//          write ? "writing" : "reading",
- //         user ? "user" : "kernel");
-//  printf ("fault_addr : %p tid : %d\n", fault_addr, thread_current () ->tid);         
-//  kill (f);
 //  printf ("fault_addr : %p\n", fault_addr);
 //  printf ("f->eip : %p\n", f->eip);
 
   struct thread *t = thread_current ();
   struct hash_iterator i;
   struct vpage *vpage;
-  struct file *file;
+  struct file *file = NULL;
   bool success = false;
   hash_first (&i, &t->vmhash);
   while (hash_next (&i))
@@ -181,13 +167,74 @@ page_fault (struct intr_frame *f)
       vpage = hash_entry (hash_cur (&i), struct vpage, h_elem);        
       if ((unsigned) vpage->vaddr == ((unsigned) fault_addr & ~PGMASK))
         {
-          ASSERT (!vpage->is_load);
+//          ASSERT (!vpage->is_load);
+          if (free_cnt <= 0)
+            {
+              /* We should evict one frame. */
+            }
           uint8_t *kpage = palloc_get_page (PAL_USER);
           ASSERT (kpage != NULL);
+          vpage->paddr = (void *) kpage;
+
+          /* Set the frame table. */
+          struct frame *frame;
+          frame = malloc (sizeof *frame);
+          frame->addr = kpage;
+          list_push_front (&p_mem, &frame->list_elem); 
 
           discontinue_until_acquire_lock (&filesys_lock);
           file = filesys_open (vpage->name);
           lock_release (&filesys_lock);
+          if (file == NULL)
+            exit (-1);
+          file_seek (file, vpage->off);
+          if (file_read (file, kpage, vpage->page_read_bytes) != (int) 
+vpage->page_read_bytes)
+            {
+              palloc_free_page (kpage);
+              printf ("Pull a new page fail!");
+              exit(-1);
+            }
+          memset (kpage + vpage->page_read_bytes, 0, vpage->page_zero_bytes);
+          if (!install_page (vpage->vaddr, kpage, vpage->writable))    
+            {
+              palloc_free_page (kpage);
+              printf ("Pull a new page fail!");
+              exit(-1);
+            }
+          vpage->is_load = true;
+          success = true;
+          break;
+        }
+    }
+  struct list_elem *e;
+  for (e = list_begin (&t->mmap_list); e != list_end (&t->mmap_list); e = list_next (e))
+    {
+      vpage = list_entry (e, struct vpage, list_elem); 
+      if (vpage == NULL)
+        exit (-1);
+      if ((unsigned) vpage->vaddr == ((unsigned) fault_addr & ~PGMASK))
+        {
+//          ASSERT (!vpage->is_load);
+          if (free_cnt <= 0)
+            {
+              /* We should evict one frame. */
+            }
+          uint8_t *kpage = palloc_get_page (PAL_USER);
+          ASSERT (kpage != NULL);
+          vpage->paddr = (void *) kpage;
+
+          /* Set the frame table. */
+          struct frame *frame;
+          frame = malloc (sizeof *frame);
+          frame->addr = kpage;
+          list_push_front (&p_mem, &frame->list_elem);
+
+          discontinue_until_acquire_lock (&filesys_lock);
+          file = filesys_open (vpage->name);
+          lock_release (&filesys_lock);
+          if (file == NULL)
+            exit (-1);
           file_seek (file, vpage->off);
           if (file_read (file, kpage, vpage->page_read_bytes) != (int) 
 vpage->page_read_bytes)
@@ -210,7 +257,7 @@ vpage->page_read_bytes)
     }
   file_close (file);
   if (!success)
-    exit(-1);
+    exit (-1);
   return;
 }
 
