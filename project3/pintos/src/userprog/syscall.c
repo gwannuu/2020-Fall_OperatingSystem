@@ -543,6 +543,8 @@ close (int fd)
 mapid_t
 mmap (int fd, void *addr)
 {
+  if (!check_address (addr))
+    return -1;
   if (fd == 0 || fd == 1 || free_cnt <= 0 || (unsigned) addr & PGMASK)
     return -1;
   int fmt_idx = search_fmt_idx (fd);

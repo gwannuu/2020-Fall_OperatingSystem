@@ -177,10 +177,8 @@ page_fault (struct intr_frame *f)
           vpage->paddr = (void *) kpage;
 
           /* Set the frame table. */
-          struct frame *frame;
-          frame = malloc (sizeof *frame);
-          frame->addr = kpage;
-          list_push_front (&p_mem, &frame->list_elem); 
+          frame_fill (kpage);
+          free_cnt--;
 
           discontinue_until_acquire_lock (&filesys_lock);
           file = filesys_open (vpage->name);
@@ -225,10 +223,10 @@ vpage->page_read_bytes)
           vpage->paddr = (void *) kpage;
 
           /* Set the frame table. */
-          struct frame *frame;
-          frame = malloc (sizeof *frame);
-          frame->addr = kpage;
-          list_push_front (&p_mem, &frame->list_elem);
+//          struct frame *frame;
+//          frame = malloc (sizeof *frame);
+//          frame->addr = kpage;
+//          list_push_front (&p_mem, &frame->list_elem);
 
           discontinue_until_acquire_lock (&filesys_lock);
           file = filesys_open (vpage->name);

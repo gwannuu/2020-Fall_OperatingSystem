@@ -12,6 +12,7 @@
 #include "threads/vaddr.h"
 
 #include "vm/frame.h"
+#include "userprog/process.h"
 
 /* Page allocator.  Hands out memory in page-size (or
    page-multiple) chunks.  See malloc.h for an allocator that
@@ -84,7 +85,19 @@ palloc_get_multiple (enum palloc_flags flags, size_t page_cnt)
   lock_release (&pool->lock);
 
   if (page_idx != BITMAP_ERROR)
-    pages = pool->base + PGSIZE * page_idx;
+    {
+      pages = pool->base + PGSIZE * page_idx;
+//      if (is_start)
+//        {
+// /         int i;
+// /         for (i = 0; i < page_cnt; i++)
+//            {
+//              if (!frame_fill (pages + PGSIZE * i))
+//                PANIC ("fail to load frame!");
+//            }
+//        }
+    }
+          
   else
     pages = NULL;
 
@@ -99,7 +112,8 @@ palloc_get_multiple (enum palloc_flags flags, size_t page_cnt)
         PANIC ("palloc_get: out of pages");
     }
 
-  free_cnt -= page_cnt;
+//  if (is_start)
+//    free_cnt -= page_cnt;
   return pages;
 }
 
@@ -143,7 +157,16 @@ palloc_free_multiple (void *pages, size_t page_cnt)
   ASSERT (bitmap_all (pool->used_map, page_idx, page_cnt));
   bitmap_set_multiple (pool->used_map, page_idx, page_cnt, false);
   
-  free_cnt += page_cnt;
+//  if (is_start)
+//    {
+//      int i;
+//      for (i = 0; i < page_cnt; ++i)
+//        {
+//          if (!frame_remove (pages + i * PGSIZE))
+//            PANIC ("fail to remove address on physical memory!\n");
+//        }
+//      free_cnt += page_cnt;
+//    }
 }
 
 /* Frees the page at PAGE. */

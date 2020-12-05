@@ -36,7 +36,7 @@ process_execute (const char *file_name)
   if (!is_start)
     {
       free_cnt = 383;
-      list_init (&p_mem);
+//      list_init (&p_mem);
       lock_init (&exit_lock);
       lock_init (&exec_lock);
       lock_init (&wait_lock);
@@ -390,7 +390,6 @@ process_exit (void)
  
   struct thread *cur = thread_current ();
   uint32_t *pd;
-  struct list_elem *e;
   struct hash_iterator i;
   hash_first (&i, &cur->vmhash);
 
@@ -398,25 +397,28 @@ process_exit (void)
   while (hash_next (&i))
     {
       struct vpage *vpage = hash_entry (hash_cur (&i), struct vpage, h_elem);
-      bool success = false;
-      for (e = list_begin (&p_mem); e != list_end (&p_mem); e = list_next (e))
-        {
-          struct frame *frame = list_entry (e, struct frame, list_elem);
-          if (frame->addr == vpage->paddr)
-            {
-              list_remove (&frame->list_elem);
-              free (frame);
-              success = true;
-              break;
-            }
-        }
+      frame_remove (vpage->paddr);
+      free_cnt++;
+    }
+ 
+//      for (e = list_begin (&p_mem); e != list_end (&p_mem); e = list_next (e))
+//        {
+//          struct frame *frame = list_entry (e, struct frame, list_elem);
+//          if (frame->addr == vpage->paddr)
+//            {
+//              list_remove (&frame->list_elem);
+//              free (frame);
+//              success = true;
+//              break;
+//            }
+//        }
 //      if (!success)
 //        PANIC ("fail to remove frame!\n");  
-    }
+//    }
+               
             
   /* Destroy the hash table of current thread. */    
   hash_destroy (&cur->vmhash, vpage_action);
-//  printf ("after finish cur thread %s remaining free cnt : %d\n", cur->name, free_cnt);
   
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -436,6 +438,7 @@ process_exit (void)
       pagedir_destroy (pd);
     }
   proc_cnt--;
+//  printf ("after finish cur thread %s remaining free cnt : %d\n", cur->name, free_cnt);
 }
 
 /* Sets up the CPU for running user code in the current
