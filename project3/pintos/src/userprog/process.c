@@ -271,6 +271,10 @@ remove_cfl_fd (int fd, struct file *file)
       ASSERT (fd_idx < FD_SIZE);
     }
   cfl[idx].fd[fd_idx] = 0;
+  cfl[idx].is_filled = false;
+  cfl[idx].is_opened = false;
+  cfl[idx].file_ptr = NULL;
+  memmove (cfl[idx].file_name, "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0", 16);
 }
 /* Find the idx in Process Management Table for TID thread. */
 int
@@ -735,6 +739,7 @@ load_segment (const char *file_name, struct file *file, off_t ofs, uint8_t *upag
       memmove (vpage->name, file_name, 16);
       vpage->off = pos;
       vpage->type = NORMAL;
+      vpage->file = NULL;
 //      vpage->appendix = 0;
       
       hash_insert (&t->vmhash, &vpage->h_elem);

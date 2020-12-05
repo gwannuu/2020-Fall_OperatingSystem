@@ -17,7 +17,7 @@ enum type
 struct vpage							/* virtual page. */
 	{
 		char name[16];
-//		struct file *file;
+		struct file *file;
 		bool is_load;
 		bool writable;
 		void *vaddr;
@@ -32,6 +32,7 @@ struct vpage							/* virtual page. */
 
 struct mmap_entry
 	{
+		char name[16];
 		struct file *file;
 		struct list_elem mmap_elem;
 		struct list mmap_list;

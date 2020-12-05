@@ -9,6 +9,13 @@ typedef int mapid_t;
 
 mapid_t map_cnt;
 
+struct removed_list
+	{
+		bool is_filled;
+		char name[16];
+	};
+struct removed_list removed_list[5];
+
 void syscall_init (void);
 void exit (int);
 

@@ -164,7 +164,8 @@ page_fault (struct intr_frame *f)
   struct vpage *vpage;
   struct file *file = NULL;
   bool success = false;
-
+  
+  enum type type;
   /* Search whole vpage. */
   hash_first (&i, &t->vmhash);
   while (hash_next (&i))
@@ -185,9 +186,20 @@ page_fault (struct intr_frame *f)
           frame_fill (kpage);
           free_cnt--;
 
-          discontinue_until_acquire_lock (&filesys_lock);
-          file = filesys_open (vpage->name);
-          lock_release (&filesys_lock);
+          /* Allocate file pointer FILE. */
+          if (vpage->type == NORMAL)
+            {
+              discontinue_until_acquire_lock (&filesys_lock);
+              file = filesys_open (vpage->name);
+              lock_release (&filesys_lock);
+              type = NORMAL;
+            }
+          else if (vpage->type == MMAP)
+            {
+              file = vpage->file;
+              type = MMAP;
+            }
+
           if (file == NULL)
             exit (-1);
           file_seek (file, vpage->off);
@@ -210,7 +222,8 @@ vpage->page_read_bytes)
           break;
         }
     }
-  file_close (file);
+  if (type == NORMAL)
+    file_close (file);
   if (!success)
     exit (-1);
   return;

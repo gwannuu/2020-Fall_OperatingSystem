@@ -75,7 +75,7 @@ struct current_file_list
 		int fd[FD_SIZE];
 		char file_name[NAME_SIZE];						/* open */
 //		char player_name[NAME_SIZE];					/* open */
-		struct lock file_lock;
+//		struct lock file_lock;
 	};
 struct current_file_list cfl[CFL_SIZE];
 

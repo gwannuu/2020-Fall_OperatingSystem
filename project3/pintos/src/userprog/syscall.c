@@ -200,6 +200,18 @@ exit (int status)
       if (fmt_idx != -1)
         close (fmt[fmt_idx].fd);
     }
+  
+  /* Close whole mmaped file. */ 
+  struct list_elem *e;
+  for (e = list_begin (&t->mmap); e != list_end (&t->mmap); e = list_next (e))
+    {
+      struct mmap_entry *mentry = list_entry (e, struct mmap_entry, mmap_elem);
+      munmap (mentry->mapping);
+      if (t->remain_cnt <= 0)
+        break;
+    }
+   
+  
 
   /* Close the whole */ 
 
@@ -317,6 +329,16 @@ remove (const char *file)
   discontinue_until_acquire_lock (&filesys_lock);
   bool is_file_removed = filesys_remove (file);
   lock_release (&filesys_lock);
+
+  /* Enroll the file name who is removed. */
+  int i;
+  for (i = 0; i < 5; i++)
+    {
+      if (!removed_list[i].is_filled)
+        break;
+    }
+  removed_list[i].is_filled = true;
+  memmove (removed_list[i].name, file, 16);
   lock_release (&remove_lock);
   return is_file_removed;
 }
@@ -533,6 +555,13 @@ close (int fd)
           lock_release (&close_lock);
           return;
         }
+    
+//    cfl[cfl_idx].is_filled = false;
+//    cfl[cfl_idx].is_opened = false;
+//    cfl[cfl_idx].file_ptr = NULL;
+//    memmove (cfl[cfl_idx].file_name, "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0", 16);
+
+
     file_close (file);
     remove_cfl_fd (fd, file);
     cfl[cfl_idx].is_opened = false;
@@ -544,6 +573,8 @@ mapid_t
 mmap (int fd, void *addr)
 {
   struct thread *t = thread_current ();
+  if (addr == (void *) 0xbffff000)
+    return -1;
   if (!check_address (addr))
     return -1;
   if (fd == 0 || fd == 1 || free_cnt <= 0 || (unsigned) addr & PGMASK)
@@ -589,6 +620,7 @@ mmap (int fd, void *addr)
   /* Make mmap_entry. */
   struct mmap_entry *mentry = malloc (sizeof *mentry);
   mentry->file = mfile;
+  memmove (mentry->name, cfl[cfl_idx].file_name, 16);
   mentry->mapping = map_cnt + 1;
   mentry->remain_cnt = 0;
   list_init (&mentry->mmap_list);
@@ -611,6 +643,7 @@ mmap (int fd, void *addr)
       vpage->page_read_bytes = remain_file_length > PGSIZE ? PGSIZE : remain_file_length;
       vpage->page_zero_bytes = vpage->page_read_bytes == PGSIZE ? 0 : PGSIZE - remain_file_length;
       vpage->off = page_cnt * PGSIZE; 
+      vpage->file = mfile;
       
       list_push_front (&mentry->mmap_list, &vpage->m_elem);    
       mentry->remain_cnt++;
@@ -648,7 +681,19 @@ munmap (mapid_t mapping)
             }
           list_remove (&mentry->mmap_elem);
           t->remain_cnt--;
-          file_close (mentry->file);
+          
+          int i;
+          bool is_removed = false;
+          for (i = 0; i < 5; ++i)
+            {
+              if (!strcmp (mentry->name, removed_list[i].name))
+                {
+                  is_removed = true;
+                  break;
+                }
+            }
+          if (!is_removed)
+            file_close (mentry->file);
           free (mentry);
         } 
       if (t->remain_cnt <= 0)
