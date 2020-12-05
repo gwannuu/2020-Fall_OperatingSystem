@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include "filesys/file.h"
 #include "filesys/filesys.h"
+#include "userprog/syscall.h"
 
 enum type
 	{
@@ -16,7 +17,7 @@ enum type
 struct vpage							/* virtual page. */
 	{
 		char name[16];
-		struct file *file;
+//		struct file *file;
 		bool is_load;
 		bool writable;
 		void *vaddr;
@@ -25,10 +26,19 @@ struct vpage							/* virtual page. */
 		uint32_t page_zero_bytes;
 		off_t off;						/* file offset. */
 		struct hash_elem h_elem;
-		struct list_elem list_elem;
+		struct list_elem m_elem;
 		enum type type;
-		int appendix;
 	};
+
+struct mmap_entry
+	{
+		struct file *file;
+		struct list_elem mmap_elem;
+		struct list mmap_list;
+		mapid_t mapping;
+		unsigned short remain_cnt;
+	};
+		
 		
 unsigned vpage_hash (const struct hash_elem *v_, void *aux);
 bool vpage_less (const struct hash_elem *a_, const struct hash_elem *b_, void *aux);

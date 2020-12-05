@@ -113,7 +113,7 @@ start_process (void *file_name_)
 
   struct thread *t = thread_current ();
   hash_init (&t->vmhash, vpage_hash, vpage_less, NULL); 
-  list_init (&t->mmap_list);
+  list_init (&t->mmap);
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -725,7 +725,7 @@ load_segment (const char *file_name, struct file *file, off_t ofs, uint8_t *upag
 
       struct vpage *vpage;
       vpage = malloc (sizeof *vpage);
-      vpage->file = NULL;
+//      vpage->file = NULL;
       vpage->is_load = false;
       vpage->writable = writable;
       vpage->vaddr = upage;
@@ -735,7 +735,7 @@ load_segment (const char *file_name, struct file *file, off_t ofs, uint8_t *upag
       memmove (vpage->name, file_name, 16);
       vpage->off = pos;
       vpage->type = NORMAL;
-      vpage->appendix = 0;
+//      vpage->appendix = 0;
       
       hash_insert (&t->vmhash, &vpage->h_elem);
       struct vpage* vptr =  hash_entry (hash_find (&t->vmhash, &vpage->h_elem), struct vpage, h_elem);

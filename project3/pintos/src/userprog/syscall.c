@@ -543,6 +543,7 @@ close (int fd)
 mapid_t
 mmap (int fd, void *addr)
 {
+  struct thread *t = thread_current ();
   if (!check_address (addr))
     return -1;
   if (fd == 0 || fd == 1 || free_cnt <= 0 || (unsigned) addr & PGMASK)
@@ -566,32 +567,58 @@ mmap (int fd, void *addr)
       file_close (mfile);
       return -1;
     }
+
+  /* Check process virtual address overlap. */
+  struct hash_iterator i;
+  hash_first (&i, &t->vmhash);
+  int page_num = remain_file_length / PGSIZE + remain_file_length % PGSIZE > 0 ? 1 : 0;
+  void *low = addr;
+  void *high = (void *)((uint32_t)addr + page_num*PGSIZE);
+  while (hash_next (&i))
+    {
+      struct vpage *vpage = hash_entry (hash_cur (&i), struct vpage, h_elem);
+      if (vpage->vaddr >= low && vpage->vaddr <= high)
+        {
+          file_close (mfile);
+          return -1;
+        }
+    }
+      
   map_cnt++;
 
-  int page_num = 0;
-  struct thread *t = thread_current ();
+  /* Make mmap_entry. */
+  struct mmap_entry *mentry = malloc (sizeof *mentry);
+  mentry->file = mfile;
+  mentry->mapping = map_cnt + 1;
+  mentry->remain_cnt = 0;
+  list_init (&mentry->mmap_list);
+  list_push_front (&t->mmap, &mentry->mmap_elem);
+  t->remain_cnt++;
+  
+
+  int page_cnt = 0;
   while (remain_file_length > 0)
     {
       struct vpage *vpage = malloc (sizeof *vpage);
       vpage->type = MMAP;
       memmove (vpage->name, cfl[cfl_idx].file_name, 16);
-      vpage->file = mfile;
+//      vpage->file = mfile;
       vpage->is_load = false;
       /* True  아닐 수도 있음. */
       vpage->writable = true;
-      vpage->vaddr = (void *) ((int) addr + (page_num * PGSIZE)); 
+      vpage->vaddr = (void *) ((int) addr + (page_cnt * PGSIZE)); 
       vpage->paddr = NULL;
       vpage->page_read_bytes = remain_file_length > PGSIZE ? PGSIZE : remain_file_length;
       vpage->page_zero_bytes = vpage->page_read_bytes == PGSIZE ? 0 : PGSIZE - remain_file_length;
-      vpage->off = page_num * PGSIZE; 
-      vpage->type = MMAP;
-      vpage->appendix = map_cnt + 1; 
+      vpage->off = page_cnt * PGSIZE; 
       
-      list_push_front (&t->mmap_list, &vpage->list_elem);    
+      list_push_front (&mentry->mmap_list, &vpage->m_elem);    
+      mentry->remain_cnt++;
+      hash_insert (&t->vmhash, &vpage->h_elem);
 
       /* Advance. */
       remain_file_length -= PGSIZE; 
-      page_num++;
+      page_cnt++;
     }
   return map_cnt + 1;
 }
@@ -601,16 +628,31 @@ munmap (mapid_t mapping)
 {
   struct thread *t = thread_current ();
   struct list_elem *e;
-  for (e = list_begin (&t->mmap_list); e != list_end (&t->mmap_list); e = list_next (e))
+  for (e = list_begin (&t->mmap); e != list_end (&t->mmap); e = list_next (e))
     {
-      struct vpage *vpage = list_entry (e, struct vpage, list_elem);
-      if (vpage->appendix == mapping)
+      struct mmap_entry *mentry = list_entry (e, struct mmap_entry, mmap_elem);
+      if (mentry->mapping == mapping)
         {
-          /* Delete element from mmap_list. */
-          e = list_remove (e);
-          e = list_prev (e);
-          free (vpage);
-        }
+          struct list_elem *e_;
+          for (e_ = list_begin (&mentry->mmap_list); e_ != list_end (&mentry->mmap_list); e_ = list_next (e_))
+            {
+              struct vpage *vpage = list_entry (e_, struct vpage, m_elem);
+              file_write_at (mentry->file, vpage->paddr, vpage->page_read_bytes, vpage->off);
+              e_ = list_remove (&vpage->m_elem);
+              e_ = list_prev (e_);
+              mentry->remain_cnt--;
+              hash_delete (&t->vmhash, &vpage->h_elem);
+              free (vpage);
+              if (mentry->remain_cnt <= 0)
+                break;
+            }
+          list_remove (&mentry->mmap_elem);
+          t->remain_cnt--;
+          file_close (mentry->file);
+          free (mentry);
+        } 
+      if (t->remain_cnt <= 0)
+        break;
     }
 }
 

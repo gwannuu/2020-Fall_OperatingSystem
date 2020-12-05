@@ -103,7 +103,8 @@ struct thread
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
 		struct hash vmhash;
-		struct list mmap_list;
+		struct list mmap;
+		unsigned short remain_cnt;
   };
 
 /* If false (default), use round-robin scheduler.
