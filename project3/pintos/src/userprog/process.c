@@ -22,6 +22,10 @@
 #include "filesys/directory.h"
 #include "threads/malloc.h"
 #include <stdint.h>
+#include "devices/block.h"
+#include "vm/page.h"
+#include "vm/frame.h"
+#include "vm/swap.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp, char *args);
@@ -36,7 +40,7 @@ process_execute (const char *file_name)
   if (!is_start)
     {
       free_cnt = 383;
-//      list_init (&p_mem);
+      list_init (&p_mem);
       lock_init (&exit_lock);
       lock_init (&exec_lock);
       lock_init (&wait_lock);
@@ -50,6 +54,9 @@ process_execute (const char *file_name)
       lock_init (&tell_lock);
       lock_init (&close_lock);
       lock_init (&filesys_lock);
+      swap_init ();
+//      printf ("block size : %d\n", block_size (swap));
+      swap_table_init ();
       is_start = true;
     }
   char *fn_copy;
@@ -401,8 +408,7 @@ process_exit (void)
   while (hash_next (&i))
     {
       struct vpage *vpage = hash_entry (hash_cur (&i), struct vpage, h_elem);
-      frame_remove (vpage->paddr);
-      free_cnt++;
+      frame_remove (vpage);
     }
  
 //      for (e = list_begin (&p_mem); e != list_end (&p_mem); e = list_next (e))

@@ -12,6 +12,8 @@
 #include "userprog/pagedir.h"
 #include "threads/vaddr.h"
 #include "threads/malloc.h"
+#include "vm/frame.h"
+#include "vm/swap.h"
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
@@ -156,14 +158,12 @@ page_fault (struct intr_frame *f)
   /* Count page faults. */
   page_fault_cnt++;
 
-//  printf ("fault_addr : %p\n", fault_addr);
-//  printf ("f->eip : %p\n", f->eip);
-
   struct thread *t = thread_current ();
   struct hash_iterator i;
   struct vpage *vpage;
   struct file *file = NULL;
   bool success = false;
+  int smt_idx = -1;
   
   enum type type;
   /* Search whole vpage. */
@@ -177,14 +177,17 @@ page_fault (struct intr_frame *f)
           if (free_cnt <= 0)
             {
               /* We should evict one frame. */
+            //  size_t slot_idx = swap_slot_scan (false);
+           //   int smt_idx = swap_smt_empty ();
+                            
             }
           uint8_t *kpage = palloc_get_page (PAL_USER);
           ASSERT (kpage != NULL);
           vpage->paddr = (void *) kpage;
 
           /* Set the frame table. */
-          frame_fill (kpage);
-          free_cnt--;
+          struct page *page = malloc (sizeof *page);
+          frame_fill (vpage);
 
           /* Allocate file pointer FILE. */
           if (vpage->type == NORMAL)

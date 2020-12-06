@@ -20,6 +20,7 @@
 #include "threads/malloc.h"
 #include "vm/page.h"
 #include "threads/pte.h"
+#include "vm/frame.h"
 
 static void syscall_handler (struct intr_frame *);
 

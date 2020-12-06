@@ -12,8 +12,8 @@
 #define NAME_SIZE 16
 #define MLIST_SIZE 5
 
-#include "vm/page.h"
-#include "vm/frame.h"
+//#include "vm/page.h"
+//#include "vm/frame.h"
 
 typedef int pid_t;
 
