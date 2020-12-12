@@ -153,18 +153,69 @@ page_fault (struct intr_frame *f)
 
 
 //  printf ("fault addr : %p\n", fault_addr);
+//  printf ("f->esp addr : %p\n", fault_addr);
   intr_enable ();
 
   /* Count page faults. */
   page_fault_cnt++;
 
   struct thread *t = thread_current ();
+
+//  if (!strcmp(t->name, "pt-grow-bad"))
+//    exit (-1);
   struct hash_iterator i;
   struct vpage *vpage;
   struct file *file = NULL;
   bool success = false;
   int smt_idx = -1;
-  
+  unsigned fault_addr_pgmask = (unsigned) fault_addr & ~PGMASK;
+
+//  printf("fault : %#x\n", fault_addr);
+//  printf("stack : %#x\n", t->stack_limit);
+//  printf("limit : %#x\n", t->page_limit);
+  /* Page fault handler for stack growth. */
+//  printf("      %lu      \n", t->stack_limit);
+/*
+  if (fault_addr < t->page_limit && fault_addr > t->stack_limit)
+    {
+      exit (-1);
+    }
+*/
+/*
+  if ((unsigned)fault_addr < t->stack_limit ||
+      f->esp - 4 != fault_addr ||
+      f->esp - 32 != fault_addr)
+    {
+        printf ("f->esp : %p fault_addr %p\n",f->esp, fault_addr);
+        printf ("A\n");
+        exit(-1);
+    }
+*/
+
+//  printf("f->esp : %p\nfault_ad %p\n",f->esp, fault_addr);
+  if (fault_addr_pgmask >= t->stack_limit
+        && fault_addr_pgmask < t->stack_limit + 0x800000)
+    {
+      if (fault_addr + 0x1000 <= f->esp && f->esp <= fault_addr + 0x40000)
+        {
+//          printf ("f->esp : %p\nfault_ad %p\n",f->esp, fault_addr);
+          exit(-1);
+        }
+      uint8_t *kpage = palloc_get_page (PAL_USER);
+      install_page((void *) fault_addr_pgmask, kpage, true);
+      return;
+    }
+/*
+ 
+  if (fault_addr < t->page_limit && fault_addr > t->stack_limit)
+    {
+      printf("fault : %#x\n", fault_addr);
+      printf("stack : %#x\n", t->stack_limit);
+      printf("limit : %#x\n", t->page_limit);
+      exit (-1);
+    }
+*/
+
   enum type type;
   /* Search whole vpage. */
   hash_first (&i, &t->vmhash);
@@ -210,14 +261,14 @@ page_fault (struct intr_frame *f)
 vpage->page_read_bytes)
             {
               palloc_free_page (kpage);
-              printf ("Pull a new page fail!");
+//              printf ("Pull a new page fail!");
               exit(-1);
             }
           memset (kpage + vpage->page_read_bytes, 0, vpage->page_zero_bytes);
           if (!install_page (vpage->vaddr, kpage, vpage->writable))    
             {
               palloc_free_page (kpage);
-              printf ("Pull a new page fail!");
+//              printf ("Pull a new page fail!");
               exit(-1);
             }
           vpage->is_load = true;

@@ -794,9 +794,11 @@ setup_stack (void **esp, char *cl)
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE * proc_cnt, kpage, true);
+      success = install_page (((uint8_t *) PHYS_BASE) - STACK_SIZE * PGSIZE * (proc_cnt -1) - PGSIZE, kpage, true);
       if (success){
-        *esp = PHYS_BASE - PGSIZE * (proc_cnt - 1);
+        thread_current ()->stack_limit = PHYS_BASE - STACK_SIZE * PGSIZE * proc_cnt;
+
+        *esp = PHYS_BASE -STACK_SIZE * PGSIZE * (proc_cnt - 1);
 //        *esp = PHYS_BASE - PGSIZE;
 
         /* Initialize the variables. */
@@ -884,7 +886,8 @@ setup_stack (void **esp, char *cl)
         /* return address. */
         *(int **)esp -= 1;
         **(int **)esp = 0; 
-    
+   
+//        thread_current ()->page_limit = (unsigned) *esp;
       }
       else
         palloc_free_page (kpage);

@@ -11,7 +11,8 @@
 FirstName LastName <email@domain.example>
 FirstName LastName <email@domain.example>
 FirstName LastName <email@domain.example>
-
+20181247 gwanwoo choi cgw1999@unist.ac.kr
+20181228 yoonyoung junggggg myhjyy@unist.ac.kr
 ---- PRELIMINARIES ----
 
 >> If you have any preliminary comments on your submission, notes for the
@@ -30,24 +31,100 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+<vm/page.h>
+enum type
+  {
+    NORMAL,
+    MMAP,
+    SWAP
+  };
+
+struct vpage              /* virtual page. */
+  {
+    char name[16];
+    struct file *file;
+    bool is_load;
+    bool writable;
+    void *vaddr;
+    void *paddr;
+    uint32_t page_read_bytes;
+    uint32_t page_zero_bytes;
+    off_t off;            /* file offset. */
+    struct hash_elem h_elem;
+    struct list_elem m_elem;
+    enum type type;
+  };
+
+<threads/thread.h>
+struct thread
+  {
+    /* Owned by thread.c. */
+    tid_t tid;                          /* Thread identifier. */       
+    enum thread_status status;          /* Thread state. */
+    char name[16];                      /* Name (for debugging purposes). */
+    uint8_t *stack;                     /* Saved stack pointer. */     
+    int priority;                       /* Priority. */
+    struct list_elem allelem;           /* List element for all threads list. */
+
+    /* Shared between thread.c and synch.c. */
+    struct list_elem elem;              /* List element. */
+
+#ifdef USERPROG
+    /* Owned by userprog/process.c. */
+    uint32_t *pagedir;                  /* Page directory. */
+#endif
+
+    /* Owned by thread.c. */
+    unsigned magic;                     /* Detects stack overflow. */  
+    struct hash vmhash;
+    struct list mmap;
+    unsigned short remain_cnt;
+    unsigned stack_limit;
+//    unsigned page_limit;
+  };
+
+new hash table vmhash in thread.h
+
 ---- ALGORITHMS ----
 
 >> A2: In a few paragraphs, describe your code for locating the frame,
 >> if any, that contains the data of a given page.
 
+<vm/frame.h>
+struct page
+  {
+    struct vpage *vpage;
+    struct thread *thread;
+    struct list_elem list_elem;
+  };
+
+struct list p_mem;
+
+p_mem is the physical memory frame.
+And this tracks physical memory.
+
 >> A3: How does your code coordinate accessed and dirty bits between
 >> kernel and user virtual addresses that alias a single frame, or
 >> alternatively how do you avoid the issue?
+
+When we find the dirty bits of virtual page before swapping to disk,
+if dirty bit ==1, then store the file before moving the page to disk.
 
 ---- SYNCHRONIZATION ----
 
 >> A4: When two user processes both need a new frame at the same time,
 >> how are races avoided?
 
+use the lock structure before page allocation.
+
 ---- RATIONALE ----
 
 >> A5: Why did you choose the data structure(s) that you did for
 >> representing virtual-to-physical mappings?
+
+It seems the most reasonable structure. When load time, store the 
+informations of page and store it's own thread. Since virtual address
+is the concept which is subject to process, It is right that store virtual page in its thread.
 
            PAGING TO AND FROM DISK
            =======================
@@ -112,14 +189,46 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+<vm/page.h>
+struct mmap_entry
+  {
+    char name[16];
+    struct file *file;
+    struct list_elem mmap_elem;
+    struct list mmap_list;
+    mapid_t mapping;
+    unsigned short remain_cnt;
+  };
+
+<userprog/syscall.h>
+typedef int mapid_t;
+
+mapid_t map_cnt;
+struct removed_list
+  {
+    bool is_filled;
+    char name[16];
+  };
+struct removed_list removed_list[5];
+
+<threads/thread.h>
+struct list mmap;
+unsigned short remain_cnt;
+
 ---- ALGORITHMS ----
 
 >> C2: Describe how memory mapped files integrate into your virtual
 >> memory subsystem.  Explain how the page fault and eviction
 >> processes differ between swap pages and other pages.
 
+I used 'struct vpage'. If i had a request 'mmap', then I use malloc function in mmap() in syscall.c. And I put some informations in vpage
+which is made by malloc in mmap(). After that, i push it to thread's
+'vmhash' hash table and set the type of vpage to 'MMAP'.
+
 >> C3: Explain how you determine whether a new file mapping overlaps
 >> any existing segment.
+
+I use mmap entry. Everytime called mmap(), I put the information of mapid and others to struct mmap_entry and push it to thread's list named 'mmap'. From the thread's list 'mmap', I can detect the mapping overlaps.
 
 ---- RATIONALE ----
 
@@ -129,6 +238,8 @@ FirstName LastName <email@domain.example>
 >> that much of their implementation can be shared.  Explain why your
 >> implementation either does or does not share much of the code for
 >> the two situations.
+
+From the point before swap out mmaped page, the implemented code is same as 'demand-paged' and 'swap' cases. But when swapping, we should store the revised mmaped page in the file. Other case, just store page to the swap partition.
 
          SURVEY QUESTIONS
          ================

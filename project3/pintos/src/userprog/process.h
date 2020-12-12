@@ -12,6 +12,7 @@
 #define NAME_SIZE 16
 #define MLIST_SIZE 5
 
+#define STACK_SIZE 0x800
 //#include "vm/page.h"
 //#include "vm/frame.h"
 

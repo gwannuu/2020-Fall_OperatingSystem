@@ -105,6 +105,8 @@ struct thread
 		struct hash vmhash;
 		struct list mmap;
 		unsigned short remain_cnt;
+    unsigned stack_limit;
+//    unsigned page_limit;
   };
 
 /* If false (default), use round-robin scheduler.
